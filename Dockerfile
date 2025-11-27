@@ -25,6 +25,11 @@ COPY config-example.ini .
 # Create a volume mount point for config
 VOLUME /app/config
 
+# Install required packages
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gosu procps tzdata && \
+    rm -rf /var/lib/apt/lists/*
+
 # Create entrypoint script
 COPY <<EOF /entrypoint.sh
 #!/bin/sh
@@ -38,12 +43,9 @@ useradd -u \${PUID} -g \${PGID} -m -s /bin/sh rescan 2>/dev/null || true
 chown -R \${PUID}:\${PGID} /app
 
 # Execute as the specified user
-exec su-exec \${PUID}:\${PGID} python rescan.py
+exec gosu \${PUID}:\${PGID} python rescan.py
 EOF
 
-RUN chmod +x /entrypoint.sh && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends su-exec procps tzdata && \
-    rm -rf /var/lib/apt/lists/*
+RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"] 
