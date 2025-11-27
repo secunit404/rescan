@@ -1,0 +1,42 @@
+# Git
+.git
+.gitignore
+.github/
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+.venv
+venv
+env
+
+# Config files (will be mounted as volume)
+config.ini
+
+# Documentation
+README.md
+LICENSE
+*.md
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Misc
+.DS_Store
+assets

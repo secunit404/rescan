@@ -1,5 +1,5 @@
 <div align="center">
-  <a href="https://github.com/Pukabyte/rescan">
+  <a href="https://github.com/secunit404/rescan">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logo.png" width="400">
       <img alt="rescan" src="assets/logo.png" width="400">
@@ -8,11 +8,10 @@
 </div>
 
 <div align="center">
-  <a href="https://github.com/Pukabyte/rescan/stargazers"><img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/Pukabyte/rescan?label=Rescan"></a>
-  <a href="https://github.com/Pukabyte/rescan/issues"><img alt="Issues" src="https://img.shields.io/github/issues/Pukabyte/rescan" /></a>
-  <a href="https://github.com/Pukabyte/rescan/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/Pukabyte/rescan"></a>
-  <a href="https://github.com/Pukabyte/rescan/graphs/contributors"><img alt="Contributors" src="https://img.shields.io/github/contributors/Pukabyte/rescan" /></a>
-  <a href="https://discord.gg/vMSnNcd7m5"><img alt="Discord" src="https://img.shields.io/badge/Join%20discord-8A2BE2" /></a>
+  <a href="https://github.com/secunit404/rescan/stargazers"><img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/secunit404/rescan?label=Rescan"></a>
+  <a href="https://github.com/secunit404/rescan/issues"><img alt="Issues" src="https://img.shields.io/github/issues/secunit404/rescan" /></a>
+  <a href="https://github.com/secunit404/rescan/blob/master/LICENSE"><img alt="License" src="https://img.shields.io/github/license/secunit404/rescan"></a>
+  <a href="https://github.com/secunit404/rescan/graphs/contributors"><img alt="Contributors" src="https://img.shields.io/github/contributors/secunit404/rescan" /></a>
 </div>
 
 <div align="center">
@@ -47,9 +46,25 @@ It can also provide Discord notification summaries.<br/>
 
 ### Docker (Recommended)
 
+#### Option 1: Use Pre-built Image
+```bash
+# Create config directory
+mkdir -p /opt/rescan
+
+# Copy example config
+docker run --rm ghcr.io/secunit404/rescan:latest cat /app/config-example.ini > /opt/rescan/config.ini
+
+# Edit config with your settings
+nano /opt/rescan/config.ini
+
+# Run with docker compose
+docker compose up -d
+```
+
+#### Option 2: Build Locally
 1. Clone the repository:
 ```bash
-git clone https://github.com/Pukabyte/rescan.git
+git clone https://github.com/secunit404/rescan.git
 cd rescan
 ```
 
@@ -82,46 +97,52 @@ discord_webhook_url = your_discord_webhook_url_here
 docker-compose up -d
 ```
 
-### Manual Installation
+### Using Docker Compose
 
-1. Clone the repository:
-```bash
-git clone https://github.com/Pukabyte/rescan.git
-cd rescan
+Create a `docker-compose.yml`:
+```yaml
+services:
+  rescan:
+    image: ghcr.io/secunit404/rescan:latest
+    container_name: rescan
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - /opt/rescan:/app/config
+      - /mnt:/mnt  # Your media directory
 ```
 
-2. Install dependencies:
+Then run:
 ```bash
-pip install -r requirements.txt
-```
-
-3. Copy and configure the config file:
-```bash
-cp config-example.ini config.ini
-```
-
-4. Edit `config.ini` with your settings
-
-5. Run the script:
-```bash
-python rescan.py
+docker compose up -d
 ```
 
 ## Configuration
 
+All configuration is done via `/opt/rescan/config.ini` (or wherever you mount `/app/config`).
+
 ### Plex Settings
 - `server`: Your Plex server URL (e.g., http://localhost:32400)
-- `token`: Your Plex authentication token
+- `token`: Your Plex authentication token ([How to find your token](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/))
 
 ### Scan Settings
 - `directories`: Comma-separated list of directories to scan
-- `scan_interval`: Seconds to wait between Plex rescans
-- `run_interval`: Hours between full scans
-- `symlink_check`: Enable/disable broken symlink detection
+- `scan_interval`: Seconds to wait between Plex rescans (default: 5)
+- `run_interval`: Hours between full scans (default: 24)
+- `symlink_check`: Enable/disable broken symlink detection (default: false)
 
 ### Notification Settings
-- `enabled`: Enable/disable Discord notifications
+- `enabled`: Enable/disable Discord notifications (default: false)
 - `discord_webhook_url`: Your Discord webhook URL
+- `logfile`: Optional log file path (e.g., `/app/config/rescan.log`)
+
+### Environment Variables
+- `PUID`: User ID for file permissions (default: 1000)
+- `PGID`: Group ID for file permissions (default: 1000)
+- `TZ`: Timezone (default: UTC)
 
 ## Discord Notifications
 
@@ -143,7 +164,18 @@ The script sends detailed notifications to Discord including:
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
+## Credits
+
+Forked from [Pukabyte/rescan](https://github.com/Pukabyte/rescan) with the following improvements:
+- Docker-first architecture with multi-platform support (amd64/arm64)
+- GitHub Actions for automated builds
+- PUID/PGID support for proper file permissions
+- Health checks and graceful shutdown handling
+- Better error handling and configuration validation
+- Timezone support via environment variable
+
 ## Acknowledgments
 
 - [PlexAPI](https://github.com/pkkid/python-plexapi) for Plex server interaction
-- [Discord.py](https://github.com/Rapptz/discord.py) for Discord webhook support 
+- [Discord.py](https://github.com/Rapptz/discord.py) for Discord webhook support
+- Original author: [Pukabyte](https://github.com/Pukabyte) 

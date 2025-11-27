@@ -1,18 +1,22 @@
 services:
   rescan:
-    restart: unless-stopped 
-    container_name: rescan 
+    restart: unless-stopped
+    container_name: rescan
+    # Option 1: Build locally
     build: .
-    hostname: rescan 
-    networks: 
-      - saltbox
-    labels:
-      com.github.saltbox.saltbox_managed: true 
-    volumes: 
+    # Option 2: Use pre-built image from GitHub Container Registry
+    # image: ghcr.io/secunit404/rescan:latest
+    hostname: rescan
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
       - /opt/rescan:/app/config
-      - /etc/localtime:/etc/localtime:ro
       - /mnt:/mnt
-
-networks: 
-  saltbox:
-    external: true 
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f rescan.py || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s 

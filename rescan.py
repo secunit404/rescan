@@ -18,22 +18,55 @@ import aiohttp
 # === CONFIG ===
 
 config = configparser.ConfigParser()
-config.read('config.ini')
+# Docker-first config path
+CONFIG_PATH = '/app/config/config.ini'
+if not os.path.exists(CONFIG_PATH):
+    print(f"❌ config.ini not found at {CONFIG_PATH}. Please ensure it's mounted in the /app/config volume.")
+    exit(1)
 
-PLEX_URL = config['plex']['server']
-TOKEN = config['plex']['token']
-LOG_LEVEL = config['logs']['loglevel']
-SCAN_INTERVAL = int(config['behaviour']['scan_interval'])
-RUN_INTERVAL = int(config['behaviour']['run_interval'])
-DISCORD_WEBHOOK_URL = config['notifications']['discord_webhook_url']
-DISCORD_AVATAR_URL = "https://raw.githubusercontent.com/pukabyte/rescan/master/assets/logo.png"
-DISCORD_WEBHOOK_NAME = "Rescan"
-SYMLINK_CHECK = config.getboolean('behaviour', 'symlink_check', fallback=False)
-NOTIFICATIONS_ENABLED = config.getboolean('notifications', 'enabled', fallback=True)
+try:
+    config.read(CONFIG_PATH)
 
-# Support both comma-separated or line-separated values
-directories_raw = config['scan']['directories']
-SCAN_PATHS = [path.strip() for path in directories_raw.replace('\n', ',').split(',') if path.strip()]
+    # Validate required sections exist
+    required_sections = ['plex', 'logs', 'scan', 'behaviour', 'notifications']
+    missing_sections = [s for s in required_sections if not config.has_section(s)]
+    if missing_sections:
+        print(f"❌ Missing required sections in config.ini: {', '.join(missing_sections)}")
+        exit(1)
+
+    # Parse config with validation
+    PLEX_URL = config.get('plex', 'server')
+    TOKEN = config.get('plex', 'token')
+
+    if not PLEX_URL or PLEX_URL == 'http://localhost:32400':
+        print("⚠️  Warning: Using default Plex URL. Make sure this is correct.")
+    if not TOKEN or TOKEN == 'your_plex_token_here':
+        print("❌ Plex token not configured. Please set your token in config.ini")
+        exit(1)
+
+    LOG_LEVEL = config.get('logs', 'loglevel', fallback='INFO')
+    SCAN_INTERVAL = config.getint('behaviour', 'scan_interval', fallback=5)
+    RUN_INTERVAL = config.getint('behaviour', 'run_interval', fallback=24)
+    DISCORD_WEBHOOK_URL = config.get('notifications', 'discord_webhook_url', fallback='')
+    DISCORD_AVATAR_URL = "https://raw.githubusercontent.com/secunit404/rescan/master/assets/logo.png"
+    DISCORD_WEBHOOK_NAME = "Rescan"
+    SYMLINK_CHECK = config.getboolean('behaviour', 'symlink_check', fallback=False)
+    NOTIFICATIONS_ENABLED = config.getboolean('notifications', 'enabled', fallback=True)
+
+    # Support both comma-separated or line-separated values
+    directories_raw = config.get('scan', 'directories')
+    SCAN_PATHS = [path.strip() for path in directories_raw.replace('\n', ',').split(',') if path.strip()]
+
+    if not SCAN_PATHS:
+        print("❌ No scan directories configured. Please set directories in config.ini")
+        exit(1)
+
+except configparser.Error as e:
+    print(f"❌ Error parsing config.ini: {e}")
+    exit(1)
+except ValueError as e:
+    print(f"❌ Invalid config value: {e}")
+    exit(1)
 
 # Media file extensions to look for
 MEDIA_EXTENSIONS = {
@@ -47,18 +80,40 @@ library_ids = {}
 library_paths = {}
 library_files = defaultdict(set)  # Cache of files in each library
 
-# Initialize Plex server
-plex = PlexServer(PLEX_URL, TOKEN)
+# Initialize Plex server - will be set in main()
+plex = None
+
+def initialize_plex():
+    """Initialize Plex server connection with error handling."""
+    global plex
+    try:
+        plex = PlexServer(PLEX_URL, TOKEN)
+        logger.info(f"✅ Connected to Plex server: {plex.friendlyName}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Failed to connect to Plex server at {PLEX_URL}: {e}")
+        return False
 
 # ANSI escape codes for text formatting
 BOLD = '\033[1m'
 RESET = '\033[0m'
 
 # Configure logging
+log_handlers: list[logging.Handler] = [logging.StreamHandler()]
+
+# Add file handler if LOG_FILE is configured
+LOG_FILE = config.get('logs', 'logfile', fallback=None)
+if LOG_FILE:
+    try:
+        log_handlers.append(logging.FileHandler(LOG_FILE))
+    except (OSError, PermissionError) as e:
+        print(f"Warning: Could not create log file {LOG_FILE}: {e}")
+
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL.upper()),
     format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%d %b %Y | %I:%M:%S %p'
+    datefmt='%d %b %Y | %I:%M:%S %p',
+    handlers=log_handlers
 )
 logger = logging.getLogger(__name__)
 
@@ -260,6 +315,9 @@ async def send_discord_webhook(webhook, embed):
 def get_library_ids():
     """Fetch library section IDs and paths dynamically from Plex."""
     global library_ids, library_paths
+    if not plex:
+        logger.error("Plex server not initialized")
+        return {}
     for section in plex.library.sections():
         lib_type = section.type
         lib_key = section.key
@@ -323,7 +381,11 @@ def cache_library_files(library_id):
     if library_id in library_files:
         logger.debug(f"Using cached files for library {BOLD}{library_id}{RESET}...")
         return  # Already cached
-    
+
+    if not plex:
+        logger.error("Plex server not initialized")
+        return
+
     try:
         section = plex.library.sectionByID(int(library_id))
         logger.info(f"💾 Initializing cache for library {BOLD}{section.title}{RESET}...")
@@ -460,22 +522,30 @@ def run_scan():
 def main():
     """Main function to run the scanner on a schedule."""
     logger.info("Starting Plex Missing Files Scanner")
+
+    # Initialize Plex connection
+    if not initialize_plex():
+        logger.error("Failed to initialize Plex connection. Exiting.")
+        exit(1)
+
     logger.info(f"Will run every {BOLD}{RUN_INTERVAL}{RESET} hours")
-    
+
     # Run immediately on startup
     run_scan()
-    
+
     # Schedule subsequent runs
     schedule.every(RUN_INTERVAL).hours.do(run_scan)
-    
+
     while True:
         schedule.run_pending()
         time.sleep(60)  # Check every minute for pending tasks
 
 if __name__ == '__main__':
-    # Check if config exists
-    if not os.path.exists('config.ini'):
-        logger.error("❌ config.ini not found. Please copy config-example.ini to config.ini and configure it.")
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info("\n👋 Shutting down gracefully...")
+        exit(0)
+    except Exception as e:
+        logger.error(f"❌ Fatal error: {e}")
         exit(1)
-    
-    main()
